@@ -33,6 +33,7 @@ fun InventoryScreen(
 
     var searchQuery by remember { mutableStateOf("") }
     var isAddPanelOpen by remember { mutableStateOf(false) }
+    var productToEdit by remember { mutableStateOf<Product?>(null) }
 
     // Form states
     var prodName by remember { mutableStateOf("") }
@@ -121,7 +122,7 @@ fun InventoryScreen(
                         count = products.size
                     )
                     Spacer(modifier = Modifier.height(10.dp))
-                    InventoryList(filteredProducts, viewModel, modifier = Modifier.fillMaxSize())
+                    InventoryList(filteredProducts, viewModel, onEditClick = { productToEdit = it }, modifier = Modifier.fillMaxSize())
                 }
             }
         } else {
@@ -184,8 +185,20 @@ fun InventoryScreen(
                     }
                 }
 
-                InventoryList(filteredProducts, viewModel, modifier = Modifier.weight(1f))
+                InventoryList(filteredProducts, viewModel, onEditClick = { productToEdit = it }, modifier = Modifier.weight(1f))
             }
+        }
+
+        if (productToEdit != null) {
+            EditProductDialog(
+                product = productToEdit!!,
+                categories = categories,
+                onSave = { updatedProduct ->
+                    viewModel.updateProduct(updatedProduct)
+                    productToEdit = null
+                },
+                onDismiss = { productToEdit = null }
+            )
         }
     }
 }
@@ -373,6 +386,7 @@ fun InventoryForm(
 fun InventoryList(
     filteredProducts: List<Product>,
     viewModel: PosViewModel,
+    onEditClick: (Product) -> Unit,
     modifier: Modifier = Modifier
 ) {
     if (filteredProducts.isEmpty()) {
@@ -443,6 +457,13 @@ fun InventoryList(
                             }
 
                             IconButton(
+                                onClick = { onEditClick(item) },
+                                colors = IconButtonDefaults.iconButtonColors(contentColor = MaterialTheme.colorScheme.primary)
+                            ) {
+                                Icon(Icons.Default.Edit, contentDescription = "Edit product", modifier = Modifier.size(20.dp))
+                            }
+
+                            IconButton(
                                 onClick = { viewModel.deleteProduct(item.id) },
                                 colors = IconButtonDefaults.iconButtonColors(contentColor = Color.Red)
                             ) {
@@ -454,4 +475,181 @@ fun InventoryList(
             }
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EditProductDialog(
+    product: Product,
+    onSave: (Product) -> Unit,
+    onDismiss: () -> Unit,
+    categories: List<String>
+) {
+    var nameState by remember { mutableStateOf(product.name) }
+    var urduState by remember { mutableStateOf(product.urduName) }
+    var priceState by remember { mutableStateOf(product.price.toString()) }
+    var stockState by remember { mutableStateOf(product.stock.toString()) }
+    var barcodeState by remember { mutableStateOf(product.barcode ?: "") }
+    var categoryState by remember { mutableStateOf(product.category) }
+    var expandedCat by remember { mutableStateOf(false) }
+    var errorText by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            Button(
+                onClick = {
+                    val priceVal = priceState.toDoubleOrNull()
+                    val stockVal = stockState.toIntOrNull()
+                    if (nameState.trim().isBlank()) {
+                        errorText = "Product name cannot be empty"
+                    } else if (priceVal == null || priceVal <= 0.0) {
+                        errorText = "Enter a valid price"
+                    } else if (stockVal == null || stockVal < 0) {
+                        errorText = "Enter a valid stock level"
+                    } else {
+                        onSave(
+                            product.copy(
+                                name = nameState.trim(),
+                                urduName = urduState.trim().ifEmpty { nameState.trim() },
+                                price = priceVal,
+                                stock = stockVal,
+                                barcode = barcodeState.trim().ifEmpty { null },
+                                category = categoryState
+                            )
+                        )
+                    }
+                },
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("Save Changes / ٹھیک ہے", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel / منسوخ", color = MaterialTheme.colorScheme.primary)
+            }
+        },
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Edit,
+                    contentDescription = "Edit icon",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Edit Product & Restock / ترمیم پروڈکٹ",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 17.sp
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                OutlinedTextField(
+                    value = nameState,
+                    onValueChange = { nameState = it },
+                    label = { Text("Product Name (English)", fontSize = 11.sp) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp)
+                )
+
+                OutlinedTextField(
+                    value = urduState,
+                    onValueChange = { urduState = it },
+                    label = { Text("پروڈکٹ کا نام (Urdu)", fontSize = 11.sp) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = priceState,
+                        onValueChange = { priceState = it },
+                        label = { Text("Price (Rs.)", fontSize = 11.sp) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+
+                    OutlinedTextField(
+                        value = stockState,
+                        onValueChange = { stockState = it },
+                        label = { Text("Stock / اسٹاک", fontSize = 11.sp) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                }
+
+                OutlinedTextField(
+                    value = barcodeState,
+                    onValueChange = { barcodeState = it },
+                    label = { Text("Barcode (Optional)", fontSize = 11.sp) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp)
+                )
+
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(
+                        onClick = { expandedCat = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(categoryState, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
+                            Icon(Icons.Default.ArrowDropDown, contentDescription = "Dropdown")
+                        }
+                    }
+                    DropdownMenu(
+                        expanded = expandedCat,
+                        onDismissRequest = { expandedCat = false },
+                        modifier = Modifier.fillMaxWidth(0.8f)
+                    ) {
+                        categories.forEach { cat ->
+                            DropdownMenuItem(
+                                text = { Text(cat, fontSize = 12.sp) },
+                                onClick = {
+                                    categoryState = cat
+                                    expandedCat = false
+                                }
+                            )
+                        }
+                    }
+                }
+
+                if (errorText.isNotEmpty()) {
+                    Text(
+                        text = errorText,
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        },
+        shape = RoundedCornerShape(20.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
+        tonalElevation = 5.dp
+    )
 }

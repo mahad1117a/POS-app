@@ -26,6 +26,10 @@ class PosRepository(
         productDao.insertProduct(product)
     }
 
+    suspend fun updateProduct(product: Product) {
+        productDao.updateProduct(product)
+    }
+
     suspend fun deleteProduct(productId: Int) {
         productDao.deleteProductById(productId)
     }

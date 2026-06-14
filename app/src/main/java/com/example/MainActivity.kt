@@ -7,6 +7,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -19,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -49,11 +51,20 @@ fun MainAppScaffold() {
     val viewModel: PosViewModel = viewModel()
     val transactions by viewModel.transactions.collectAsState()
     val isSyncing by viewModel.isSyncing.collectAsState()
+    val shopName by viewModel.shopName.collectAsState()
 
     val unsyncedCount = transactions.count { !it.isSynced }
 
     var currentTab by remember { mutableStateOf(0) }
     val snackbarHostState = remember { SnackbarHostState() }
+    val shopConfigured by viewModel.shopConfigured.collectAsState()
+    var showShopNameDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(shopConfigured) {
+        if (!shopConfigured) {
+            showShopNameDialog = true
+        }
+    }
 
     // Listen to UI warnings & notifications from Viewmodel
     LaunchedEffect(key1 = true) {
@@ -67,12 +78,40 @@ fun MainAppScaffold() {
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Text(
-                            text = "Apni Dukan Cloud POS",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.ExtraBold
-                        )
+                    Column(
+                        modifier = Modifier
+                            .then(
+                                if (!shopConfigured) {
+                                    Modifier.clickable { showShopNameDialog = true }
+                                } else Modifier
+                            )
+                            .padding(vertical = 4.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (shopName.isNotEmpty()) shopName else "Apni Dukan Cloud POS",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            if (!shopConfigured) {
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = "Edit store name",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.Verified,
+                                    contentDescription = "Verified branch lock",
+                                    tint = Color(0xFF10B981),
+                                    modifier = Modifier.size(15.dp)
+                                )
+                            }
+                        }
                         Text(
                             text = "آپنی دوکان ریٹیل سسٹم • Terminal #012PK",
                             fontSize = 11.sp,
@@ -193,6 +232,170 @@ fun MainAppScaffold() {
                     3 -> ReportsScreen(viewModel = viewModel)
                 }
             }
+
+            if (showShopNameDialog) {
+                ShopOnboardingDialog(
+                    currentName = shopName,
+                    currentLocation = viewModel.shopLocation.collectAsState().value,
+                    onSave = { name, location ->
+                        viewModel.configureShop(name, location)
+                        showShopNameDialog = false
+                    }
+                )
+            }
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ShopOnboardingDialog(
+    currentName: String,
+    currentLocation: String,
+    onSave: (String, String) -> Unit
+) {
+    var nameState by remember { mutableStateOf(currentName) }
+    var locationState by remember { mutableStateOf(currentLocation) }
+    var errorText by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = { /* Don't dismiss without completing setup */ },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (nameState.trim().isBlank()) {
+                        errorText = "Shop name cannot be empty / دکان کا نام لازمی ہے"
+                    } else if (locationState.trim().isBlank()) {
+                        errorText = "Shop location cannot be empty / پتہ لکھنا لازمی ہے"
+                    } else {
+                        onSave(nameState.trim(), locationState.trim())
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("Lock Configuration / محفوظ اور لاک کریں", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            }
+        },
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Storefront,
+                    contentDescription = "Store icon",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(28.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Configure Store (Once) / دکان کی ترتیب",
+                    fontWeight = FontWeight.Black,
+                    fontSize = 17.sp
+                )
+            }
+        },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = "Enter your Business Name and Address. To ensure business compliance and billing integrity, this configuration cannot be altered later.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+                
+                OutlinedTextField(
+                    value = nameState,
+                    onValueChange = {
+                        nameState = it
+                        if (it.trim().isNotEmpty()) errorText = ""
+                    },
+                    label = { Text("Shop Name / دکان کا نام", fontSize = 12.sp) },
+                    placeholder = { Text("e.g. Faisal General Store") },
+                    singleLine = true,
+                    isError = errorText.contains("name"),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    leadingIcon = { Icon(Icons.Default.Store, contentDescription = "Store icon", modifier = Modifier.size(20.dp)) }
+                )
+
+                OutlinedTextField(
+                    value = locationState,
+                    onValueChange = {
+                        locationState = it
+                        if (it.trim().isNotEmpty()) errorText = ""
+                    },
+                    label = { Text("Store Location / پتہ", fontSize = 12.sp) },
+                    placeholder = { Text("e.g. G11 Markaz, Islamabad") },
+                    singleLine = true,
+                    isError = errorText.contains("location"),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    leadingIcon = { Icon(Icons.Default.LocationOn, contentDescription = "Location icon", modifier = Modifier.size(20.dp)) }
+                )
+                
+                if (errorText.isNotEmpty()) {
+                    Text(
+                        text = errorText,
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 8.dp, start = 4.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = "Suggested Preset Brands:",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(bottom = 6.dp)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val suggestions = listOf(
+                        "Faisal Mart" to "G11 Markaz, Islamabad",
+                        "Madina Retail" to "DHA Phase 6, Lahore",
+                        "Bismillah Store" to "Saddar, Karachi"
+                    )
+                    suggestions.forEach { (sName, sLoc) ->
+                        Card(
+                            onClick = {
+                                nameState = sName
+                                locationState = sLoc
+                            },
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 8.dp, horizontal = 4.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = sName,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        shape = RoundedCornerShape(24.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
+        tonalElevation = 6.dp
+    )
 }

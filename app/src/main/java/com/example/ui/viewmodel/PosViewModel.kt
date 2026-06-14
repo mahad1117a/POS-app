@@ -59,6 +59,43 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
     private val _isSyncing = MutableStateFlow(false)
     val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
 
+    // Persistent Shop Name (SharedPreferences based storage for Model 2.0)
+    private val prefs = application.getSharedPreferences("dukan_prefs", android.content.Context.MODE_PRIVATE)
+    private val _shopName = MutableStateFlow(prefs.getString("shop_name", "") ?: "")
+    val shopName: StateFlow<String> = _shopName.asStateFlow()
+
+    private val _shopLocation = MutableStateFlow(prefs.getString("shop_location", "") ?: "")
+    val shopLocation: StateFlow<String> = _shopLocation.asStateFlow()
+
+    private val _shopConfigured = MutableStateFlow(prefs.getBoolean("shop_configured", false))
+    val shopConfigured: StateFlow<Boolean> = _shopConfigured.asStateFlow()
+
+    fun updateShopName(name: String) {
+        val trimmed = name.trim()
+        _shopName.value = trimmed
+        prefs.edit().putString("shop_name", trimmed).apply()
+        viewModelScope.launch {
+            _uiNotification.emit("Shop Name updated: $trimmed / دکان کا معلومات اپڈیٹ")
+        }
+    }
+
+    fun configureShop(name: String, location: String) {
+        if (_shopConfigured.value) return
+        val trimmedName = name.trim()
+        val trimmedLoc = location.trim()
+        _shopName.value = trimmedName
+        _shopLocation.value = trimmedLoc
+        _shopConfigured.value = true
+        prefs.edit()
+            .putString("shop_name", trimmedName)
+            .putString("shop_location", trimmedLoc)
+            .putBoolean("shop_configured", true)
+            .apply()
+        viewModelScope.launch {
+            _uiNotification.emit("POS Configured & Locked: $trimmedName ($trimmedLoc)")
+        }
+    }
+
     private val _syncMessage = MutableSharedFlow<String>()
     val syncMessage: SharedFlow<String> = _syncMessage.asSharedFlow()
 
@@ -251,10 +288,50 @@ class PosViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun addNewProductAndAddToCart(name: String, urduName: String, price: Double, stock: Int, category: String, barcode: String?) {
+        viewModelScope.launch {
+            if (name.trim().isBlank() || price <= 0.0 || stock < 0) {
+                _uiNotification.emit("Please fill required fields properly. / براہ کرم درست معلومات درج کریں۔")
+                return@launch
+            }
+            val product = Product(
+                name = name.trim(),
+                urduName = urduName.trim().ifEmpty { name.trim() },
+                price = price,
+                stock = stock,
+                category = category,
+                barcode = barcode?.trim()?.ifEmpty { null }
+            )
+            repository.insertProduct(product)
+            
+            // Fetch back from database to get correct entity ID
+            val savedProduct = if (barcode != null && barcode.trim().isNotEmpty()) {
+                repository.getProductByBarcode(barcode.trim())
+            } else {
+                null
+            }
+            
+            val finalProduct = savedProduct ?: product.copy(id = (1000..99999).random()) // fallback to random id if fail
+            addProductToCart(finalProduct)
+            _uiNotification.emit("Added to Stock & Basket: ${finalProduct.name} / پروڈکٹ شامل ہو گئی")
+        }
+    }
+
     fun deleteProduct(productId: Int) {
         viewModelScope.launch {
             repository.deleteProduct(productId)
             _uiNotification.emit("Product deleted from inventory / پروڈکٹ خارج کر دی گئی")
+        }
+    }
+
+    fun updateProduct(product: Product) {
+        viewModelScope.launch {
+            if (product.name.isBlank() || product.price <= 0.0 || product.stock < 0) {
+                _uiNotification.emit("Invalid product attributes. Update failed / تصدیق کا عمل ناکام")
+                return@launch
+            }
+            repository.updateProduct(product)
+            _uiNotification.emit("Updated product: ${product.name} / پروڈکٹ کی معلومات تبدیل")
         }
     }
 

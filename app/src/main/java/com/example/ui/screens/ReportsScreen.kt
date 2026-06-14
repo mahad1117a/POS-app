@@ -39,6 +39,8 @@ fun ReportsScreen(
     val transactions by viewModel.transactions.collectAsState()
     val totalRevenue by viewModel.totalRevenue.collectAsState()
     val totalTaxCollected by viewModel.totalTaxCollected.collectAsState()
+    val shopName by viewModel.shopName.collectAsState()
+    val shopLocation by viewModel.shopLocation.collectAsState()
 
     var activeReceiptLookup by remember { mutableStateOf<Transaction?>(null) }
     var historySearchQuery by remember { mutableStateOf("") }
@@ -131,6 +133,8 @@ fun ReportsScreen(
     activeReceiptLookup?.let { transaction ->
         ReceiptDialog(
             transaction = transaction,
+            shopName = shopName,
+            shopLocation = shopLocation,
             onClose = { activeReceiptLookup = null }
         )
     }
