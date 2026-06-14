@@ -1,0 +1,6 @@
+{
+  "name": "Dukan POS",
+  "description": "Premium Point of Sale (POS) software for Pakistan with local cash helpers, EasyPaisa/JazzCash routing, simulated FBR GST compliance, and real-time cloud reporting dashboards.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
